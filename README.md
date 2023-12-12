@@ -76,6 +76,9 @@ docker run \
     --detach mcr.microsoft.com/mssql/server:2022-latest
 ```
 
+> [!NOTE]
+> When running Docker on an ARM chip-based machine, ensure to include the --platform linux/amd64 option in your docker run command.
+
 You can use your preferred tool to execute the SQL script to create the sample database. However, I recommend using Azure Data Studio. If you are unfamiliar with Azure Data Studio, you can learn more you can learn more in Azure Data Studio here: [aka.ms/azuredatastudio](https://aka.ms/azuredatastudio).
 
 Connect to your SQL Server container using localhost as server name, 1401 as port, and SA user and password. Then, execute the [library.azure-sql.sql](Scripts/library.azure-sql.sql) file included in this repository to create the library database and all its objects.
@@ -139,6 +142,9 @@ docker run \
     --ConfigFileName /App/configs/dab-config.json
 ```
 
+> [!NOTE]
+> When running Docker on an ARM chip-based machine, ensure to include the --platform linux/amd64 option in your docker run command.
+
 This container leverages Docker’s functionality to mount the local folder `./DAB-Config` as a volume inside the container at `/App/configs`. This is the default path used by DAB’s engine to read the configuration file, that will be pass to this container in runtime. The host port 5001 is mapped to container port 5000 for external access while connecting it to the previously created network library-network.
 
 The environment file flag points to the environment file at `./DAB-Config/.env`, managing sensitive information in this case SQL Server’s connection string. Networking is handled by `--network library-network`, connecting the container to the specified network.
@@ -175,6 +181,9 @@ curl -X POST \
     -d '{"query": "{ books(first: 2, orderBy: {id: ASC}) { items { id title } } }"}' \ 
     http://localhost:5001/graphql | jq
 ```
+
+> [!TIP]
+> In case you want a minimal experience, and just get started quickly check the [bash-commands.sh](bash-commands.sh) included in this repository.
 
 And this is how you can build your APIs with DAB using containers in just a few minutes!
 
