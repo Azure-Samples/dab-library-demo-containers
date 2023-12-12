@@ -52,6 +52,9 @@ The SQL-Library container manages data securely with Microsoft SQL Server 2022, 
 - Docker / Podman
 - GitHub (optional)
 - Visual Studio Code / Azure Data Studio (optional)
+ 
+> [!TIP]
+> In case you want a minimal experience, and just get started quickly check the [bash-commands.sh](bash-commands.sh) included in this repository.
 
 ### Creating the container network
 
