@@ -113,7 +113,7 @@ CONN_STRING=Server=SQL-Library;Database=library;User ID=SA;Password=P@ssw0rd!;Tr
 The data source section of the JSON configuration file is where you define the database type and connection string. Notice how this configuration file dynamically incorporates the securely stored connection string by referencing the `CONN_STRING` environment variable using the `@env( )` syntax:
 
 ```
-  "$schema": "https://github.com/Azure/data-api-builder/releases/download/v0.5.35/dab.draft.schema.json",
+  "$schema": "https://github.com/Azure/data-api-builder/releases/download/v0.9.7/dab.draft.schema.json",
   "data-source": {
     "database-type": "mssql",
     "connection-string": "@env('CONN_STRING')"
