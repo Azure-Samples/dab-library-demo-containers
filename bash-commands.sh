@@ -5,7 +5,8 @@
 #   2- SQL Container
 #   3- DAB Container
 #   4- Testing DAB health
-#   5- Testing DAB API
+#   5- DAB with Docker compose
+#   6- Testing DAB API
 ##############################################################################
 
 # 1- Create docker network
@@ -45,7 +46,10 @@ docker exec DAB-Library env
 # 4- Testing DAB health
 curl -v http://localhost:5001/
 
-# 5- Testing DAB API
+# 5- DAB with Docker compose
+SA_PASSWORD=P@ssw0rd! docker compose up -d
+
+# 6- Testing DAB API
 curl -s http://localhost:5001/api/Book | jq
 curl -s http://localhost:5001/api/Author | jq
 

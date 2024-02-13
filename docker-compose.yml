@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  library-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    hostname: SQL-Library
+    container_name: SQL-Library
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: ${SA_PASSWORD}
+    ports:
+      - "1401:1433"
+    networks:
+      - library-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P ${SA_PASSWORD} -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 10
+      start_period: 10s
+      timeout: 3s
+
+  library-db-setup:
+    image: sqlcmd-go-scratch
+    hostname: SQL-Config
+    container_name: SQL-Config
+    volumes:
+      - ./Scripts:/docker-entrypoint-initdb.d
+    networks:
+      - library-network
+    depends_on:
+      library-db:
+        condition: service_healthy
+    command: sqlcmd -S SQL-Library -U sa -P ${SA_PASSWORD} -d master -i docker-entrypoint-initdb.d/library.azure-sql.sql -e -r1
+
+  library-api:
+    image: mcr.microsoft.com/azure-databases/data-api-builder:latest
+    container_name: DAB-Library
+    volumes:
+      - "./DAB-Config:/App/configs"
+    ports:
+      - "5001:5000"
+    env_file:
+      - "./DAB-Config/.env"
+    networks:
+      - library-network
+    depends_on:
+      - library-db-setup
+    command: ["--ConfigFileName", "/App/configs/dab-config.json"]
+    restart: unless-stopped
+
+networks:
+  library-network:
+    driver: bridge

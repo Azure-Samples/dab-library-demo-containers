@@ -39,11 +39,11 @@ Lastly, if convenience is a priority, employing a container offers a portable an
 
 **Let’s have a look at the first example of using DAB with containers.**
 
-## Library Demo
+## Library Demo using Docker containers
 
 The following diagram represents the container architecture for this demo:
 
-![Solution architecture](./images/DAB-Diagram.png)
+![Solution architecture-container](./images/DAB-Diagram-containers.png)
 
 The SQL-Library container manages data securely with Microsoft SQL Server 2022, while the DAB-Library container, powered by  Data API Builder, offers REST and GraphQL endpoints that will make requests to our database.
 
@@ -51,8 +51,8 @@ The SQL-Library container manages data securely with Microsoft SQL Server 2022, 
 
 - Docker / Podman
 - GitHub (optional)
-- Visual Studio Code / Azure Data Studio (optional)
- 
+- Visual Studio Code / Azure Data Studio (optional)  
+
 > [!TIP]
 > In case you want a minimal experience, and just get started quickly check the [bash-commands.sh](bash-commands.sh) included in this repository.
 
@@ -153,6 +153,134 @@ This container leverages Docker’s functionality to mount the local folder `./D
 The environment file flag points to the environment file at `./DAB-Config/.env`, managing sensitive information in this case SQL Server’s connection string. Networking is handled by `--network library-network`, connecting the container to the specified network.
 
 Finally, it runs the container in the background using Data API Builder’s latest container image while setting the configuration file.
+
+## Library Demo using Docker Compose
+
+The following diagram represents the container architecture for this demo:
+
+![Solution architecture-compose](./images/DAB-Diagram-compose.png)
+
+This containerized application using Docker Compose consists of three main components: Volumes, APIs, and databases. The volume, store data or files needed by the application. Such as SQL scripts and the configuration file for DAB. The API layer handles HTTP requests (REST / GraphQL) and data operations inside this network, using Data API Builder. The database stores and manages the library data, using Microsoft SQL Server.
+
+### Prerequisites
+
+- Docker / Podman
+- GitHub (optional)
+- Visual Studio Code / Azure Data Studio (optional)  
+
+> [!TIP]
+> In case you want a minimal experience, and just get started quickly check the [bash-commands.sh](bash-commands.sh) included in this repository.
+
+### Creating the Docker Compose file
+
+We deploy all these components as Docker containers, defining and configuring them as services using a Docker compose file as follows:
+
+```bash
+version: '3.8'
+
+services:
+  library-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    hostname: SQL-Library
+    container_name: SQL-Library
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: ${SA_PASSWORD}
+    ports:
+      - "1401:1433"
+    networks:
+      - library-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P ${SA_PASSWORD} -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 10
+      start_period: 10s
+      timeout: 3s
+
+  library-db-setup:
+    image: sqlcmd-go-scratch
+    hostname: SQL-Config
+    container_name: SQL-Config
+    volumes:
+      - ./Scripts:/docker-entrypoint-initdb.d
+    networks:
+      - library-network
+    depends_on:
+      library-db:
+        condition: service_healthy
+    command: sqlcmd -S SQL-Library -U sa -P ${SA_PASSWORD} -d master -i docker-entrypoint-initdb.d/library.azure-sql.sql -e -r1
+
+  library-api:
+    image: mcr.microsoft.com/azure-databases/data-api-builder:latest
+    container_name: DAB-Library
+    volumes:
+      - "./DAB-Config:/App/configs"
+    ports:
+      - "5001:5000"
+    env_file:
+      - "./DAB-Config/.env"
+    networks:
+      - library-network
+    depends_on:
+      - library-db-setup
+    command: ["--ConfigFileName", "/App/configs/dab-config.json"]
+    restart: unless-stopped
+
+networks:
+  library-network:
+    driver: bridge
+```
+
+> [!TIP]
+> When running Docker on an ARM chip-based machine, ensure to include the `platform: linux/amd64` option in your docker compose file.
+
+
+Let's dive deep on each individual service.
+
+### library-db
+
+This service creates the SQL-Library container using Microsoft SQL Server 2022's latest container image for Ubuntu 20.04. The ${SA_PASSWORD} variable in the environment section of the service configuration represents an environment variable that dynamically populates at runtime. When executing the docker compose up command with the SA_PASSWORD=<value> argument, this variable directly assigns the specified value passed through the command.
+
+In this context, ${SA_PASSWORD} serves as a placeholder, allowing flexibility in setting sensitive information such as the SQL Server's System Administrator (SA) password without directly exposing it in the Docker Compose file. This practice enhances security by separating sensitive credentials from the configuration, ensuring they're securely provided during container initialization.
+
+To enable connectivity, we configure this service to map port 1401 on the host to port 1433 within the container, facilitating external access. This mapping redirects requests arriving at port 1401 to port 1433 within the container, where the SQL Server instance listens for connections. Furthermore, the service integrates into the Docker Compose network named library-network, ensuring seamless communication with other services within the same network.
+
+Finally, the health check configuration ensures continuous health and, more importantly, availability of this service. In this specific configuration, the health check involves executing a SQL query against the SQL Server instance running within the container. The query, SELECT 1, is a lightweight operation intended to verify that the database server is up and running and capable of processing queries. It employs the sqlcmd utility to connect to the local SQL Server instance using the SA credentials, dynamically provided through the ${SA_PASSWORD} environment variable. If the command fails to execute successfully, indicating a failure to connect to or query the database, the health check will fail.
+
+### library-db-setup
+
+This service was designed to efficiently execute SQL scripts for database initialization, without the need for a full SQL Server instance within a container. To accomplish this goal, I created a custom container image named sqlcmd-go-scratch. Unlike traditional SQL Server images, which include the complete database engine and additional features, this custom image is streamlined to include only the sqlcmd utility. By leveraging this minimalist container image with Scratch as the base OS, we omit unnecessary components, optimizing resource usage and simplifying the container's footprint.
+
+> [!NOTE]
+> You can learn more about the sqlcmd-go-scratch custom image on this [GitHub repository](https://github.com/croblesm/sqlcmd-go-scratch).
+
+This service's command is responsible for initializing the library database. It accomplishes this by establishing a link between the local ./Scripts folder and a specific directory within the container called the entry point. Through this setup, sqlcmd can connect to the SQL-Library container using the provided connection parameters. Additionally, upon startup, it seamlessly accesses and executes the SQL script file located at docker-entrypoint-initdb.d/library.azure-sql.sql.
+
+The service depends on the library-db service, which is the main database service for the library-network. It uses the condition: service_healthy option to specify that it should only start after the library-db service passes its health check test.
+
+> [!NOTE]
+> The -e and -r1 options enable the echo and error reporting features of the sqlcmd tool. To learn more about sqlcmd command-line options check [the documentation](https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility#command-line-options).
+
+The library-db-setup service runs the command only once, and then exits. It does not need to be restarted or kept running, as its only purpose is to initialize the library database.
+
+### library-api
+
+The library-api service plays a pivotal role in providing access to the library's API layer functionalities via HTTP requests through REST or GraphQL endpoints. It leverages the latest Data API builder (DAB) container image, which requires you to configure the DAB engine using a configuration file to set the database connection string and API entities. For that matter, this service uses both the DAB configuration and env files located within the ./DAB-Config directory. By mounting this directory as a volume, the DAB engine running within the container can seamlessly access the necessary configuration.
+
+Furthermore, we establish a clear dependency with the library-db-setup service to ensure the database is fully initialized before the API service starts. As explained before, this other service is responsible for setting up the database schema and seeding initial data, ensuring that the API service operates on a fully functional database environment when the DAB engine starts.
+
+In terms of connectivity, this service exposes port 5000 within the container, which is the default port for the DAB. However, to enable external access, the service maps this port to port 5001 on the host machine. This configuration allows users to access the library's API REST and GraphQL endpoints conveniently through localhost:5001.
+
+Overall, the library-api service encapsulates the essential components required to provide a robust and accessible API interface for interacting with the library's database within the Docker Compose architecture.  
+
+Now that we understand the basics of each service defined in the Docker compose file in the Library demo architecture. Let’s initiate all the services using `docker compose`:
+
+```bash
+SA_PASSWORD=P@ssw0rd! docker compose up -d
+```
+
+This command initiates the deployment of Docker containers according to the specifications outlined in the docker-compose.yml file. By setting the SA_PASSWORD environment variable to P@ssw0rd!, it configures the password for the SQL Server instance within the containers.
 
 ## Testing REST and GraphQL endpoints
 
